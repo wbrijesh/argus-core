@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gocql/gocql"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
 	"argus-core/internal/database"
@@ -36,17 +36,15 @@ var (
 )
 
 type Service interface {
-	// User authentication
 	Register(email, password string) (*database.User, error)
 	Login(email, password string) (string, *database.User, error) // Returns JWT token and user
 	ValidateToken(token string) (*database.User, error)
 
-	// API Key management
-	CreateAPIKey(userID uuid.UUID, name string, expiresAt *time.Time) (*database.APIKey, string, error) // Returns APIKey and the actual key
+	CreateAPIKey(userID gocql.UUID, name string, expiresAt *time.Time) (*database.APIKey, string, error) // Returns APIKey and the actual key
 	ValidateAPIKey(key string) (*database.APIKey, error)
-	ListAPIKeys(userID uuid.UUID) ([]database.APIKey, error)
-	RevokeAPIKey(userID, keyID uuid.UUID) error
-	DeleteAPIKey(userID, keyID uuid.UUID) error
+	ListAPIKeys(userID gocql.UUID) ([]database.APIKey, error)
+	RevokeAPIKey(userID, keyID gocql.UUID) error
+	DeleteAPIKey(userID, keyID gocql.UUID) error
 }
 
 type service struct {
@@ -136,7 +134,7 @@ func (s *service) ValidateToken(tokenString string) (*database.User, error) {
 	}
 
 	// Parse user ID
-	userID, err := uuid.Parse(claims["sub"].(string))
+	userID, err := gocql.ParseUUID(claims["sub"].(string))
 	if err != nil {
 		return nil, ErrInvalidToken
 	}
@@ -150,7 +148,7 @@ func (s *service) ValidateToken(tokenString string) (*database.User, error) {
 	return user, nil
 }
 
-func (s *service) CreateAPIKey(userID uuid.UUID, name string, expiresAt *time.Time) (*database.APIKey, string, error) {
+func (s *service) CreateAPIKey(userID gocql.UUID, name string, expiresAt *time.Time) (*database.APIKey, string, error) {
 	// Generate random API key
 	apiKeyStr, err := generateAPIKey()
 	if err != nil {
@@ -192,23 +190,17 @@ func (s *service) ValidateAPIKey(key string) (*database.APIKey, error) {
 		return nil, ErrAPIKeyNotFound
 	}
 
-	// Update last used timestamp
-	if err := s.db.UpdateAPIKeyLastUsed(apiKey.ID); err != nil {
-		// Log error but don't fail the request
-		// log.Printf("Failed to update API key last used: %v", err)
-	}
-
 	return apiKey, nil
 }
 
-func (s *service) ListAPIKeys(userID uuid.UUID) ([]database.APIKey, error) {
+func (s *service) ListAPIKeys(userID gocql.UUID) ([]database.APIKey, error) {
 	return s.db.ListAPIKeys(userID)
 }
 
-func (s *service) RevokeAPIKey(userID, keyID uuid.UUID) error {
+func (s *service) RevokeAPIKey(userID, keyID gocql.UUID) error {
 	return s.db.RevokeAPIKey(userID, keyID)
 }
 
-func (s *service) DeleteAPIKey(userID, keyID uuid.UUID) error {
+func (s *service) DeleteAPIKey(userID, keyID gocql.UUID) error {
 	return s.db.DeleteAPIKey(userID, keyID)
 }

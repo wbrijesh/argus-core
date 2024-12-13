@@ -9,13 +9,11 @@ import (
 )
 
 const (
-	// APIKeyPrefix is the prefix for all API keys
 	APIKeyPrefix = "argus"
-	// APIKeyBytes is the number of random bytes to generate for the API key
-	APIKeyBytes = 32
+	APIKeyBytes  = 32
 )
 
-// generateAPIKey generates a new API key with format: argus_<random-string>
+// generateAPIKey generates a new API key with format: argus_<random-string> base64 encoded
 // The random string is base64 encoded and URL safe
 func generateAPIKey() (string, error) {
 	// Generate random bytes

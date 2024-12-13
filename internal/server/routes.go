@@ -9,7 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/google/uuid"
+	"github.com/gocql/gocql"
 
 	"argus-core/internal/auth"
 )
@@ -72,7 +72,6 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	user, err := s.auth.Register(req.Email, req.Password)
 	if err != nil {
-		log.Println("Failed to register user:", err)
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to register user")
 		return
 	}
@@ -93,7 +92,6 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return both token and user info in the response body
 	s.respondWithJSON(w, http.StatusOK, map[string]interface{}{
 		"token": token,
 		"user":  user,
@@ -102,9 +100,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleGetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	// Get user ID from context (set by authMiddleware)
-	userID := r.Context().Value("userID").(uuid.UUID)
+	userID := r.Context().Value("userID").(gocql.UUID)
 
-	// Get user from database
 	user, err := s.db.GetUserByID(userID)
 	if err != nil {
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to get user details")
@@ -121,7 +118,7 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := r.Context().Value("userID").(uuid.UUID)
+	userID := r.Context().Value("userID").(gocql.UUID)
 	apiKey, keyString, err := s.auth.CreateAPIKey(userID, req.Name, req.ExpiresAt)
 	if err != nil {
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to create API key")
@@ -135,7 +132,7 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("userID").(uuid.UUID)
+	userID := r.Context().Value("userID").(gocql.UUID)
 	apiKeys, err := s.auth.ListAPIKeys(userID)
 	if err != nil {
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to list API keys")
@@ -146,8 +143,8 @@ func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("userID").(uuid.UUID)
-	keyID, err := uuid.Parse(chi.URLParam(r, "keyID"))
+	userID := r.Context().Value("userID").(gocql.UUID)
+	keyID, err := gocql.ParseUUID(chi.URLParam(r, "keyID"))
 	if err != nil {
 		s.respondWithError(w, http.StatusBadRequest, "Invalid key ID")
 		return
@@ -162,8 +159,8 @@ func (s *Server) handleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteAPIKey(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("userID").(uuid.UUID)
-	keyID, err := uuid.Parse(chi.URLParam(r, "keyID"))
+	userID := r.Context().Value("userID").(gocql.UUID)
+	keyID, err := gocql.ParseUUID(chi.URLParam(r, "keyID"))
 	if err != nil {
 		s.respondWithError(w, http.StatusBadRequest, "Invalid key ID")
 		return
@@ -179,21 +176,13 @@ func (s *Server) handleDeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Get token from Authorization header
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
 			s.respondWithError(w, http.StatusUnauthorized, "No authorization header")
 			return
 		}
 
-		// Remove "Bearer " prefix if present
-		token := authHeader
-		if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-			token = authHeader[7:]
-		}
-
-		// Validate token
-		user, err := s.auth.ValidateToken(token)
+		user, err := s.auth.ValidateToken(authHeader)
 		if err != nil {
 			s.respondWithError(w, http.StatusUnauthorized, "Invalid token")
 			return
