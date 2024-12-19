@@ -9,15 +9,36 @@ import (
 
 	_ "github.com/joho/godotenv/autoload"
 
+	"argus-core/internal/apikeys"
 	"argus-core/internal/auth"
 	"argus-core/internal/database"
+	apikeyspb "argus-core/rpc/apikeys"
+	authpb "argus-core/rpc/auth"
 )
 
 type Server struct {
 	port int
-
 	db   database.Service
 	auth auth.Service
+}
+
+// CORSMiddleware wraps a handler with CORS support
+func CORSMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set CORS headers
+		w.Header().Set("Access-Control-Allow-Origin", "*") // In production, replace * with your frontend domain
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, Authorization")
+
+		// Handle preflight requests
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// Call the next handler
+		next.ServeHTTP(w, r)
+	})
 }
 
 func NewServer() *http.Server {
@@ -32,16 +53,22 @@ func NewServer() *http.Server {
 		TokenDuration: 24 * time.Hour,
 	})
 
-	NewServer := &Server{
-		port: port,
-		db:   db,
-		auth: authService,
-	}
+	// Create Twirp Server handlers
+	authHandler := authpb.NewAuthServiceServer(auth.NewTwirpServer(authService))
+	apiKeysHandler := apikeyspb.NewAPIKeysServiceServer(apikeys.NewTwirpServer(authService, db))
+
+	// Combine handlers
+	mux := http.NewServeMux()
+	mux.Handle(authpb.AuthServicePathPrefix, authHandler)
+	mux.Handle(apikeyspb.APIKeysServicePathPrefix, apiKeysHandler)
+
+	// Wrap the mux with CORS middleware
+	handler := CORSMiddleware(mux)
 
 	// Declare Server config
 	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", NewServer.port),
-		Handler:      NewServer.RegisterRoutes(),
+		Addr:         fmt.Sprintf(":%d", port),
+		Handler:      handler,
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,

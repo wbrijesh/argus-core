@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package apikeys;
+option go_package = "argus-core/rpc/apikeys";
+
+// APIKeys service handles API key creation, listing, revocation, and deletion.
+service APIKeysService {
+  // CreateAPIKey creates a new API key for the authenticated user.
+  rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse);
+
+  // ListAPIKeys lists all API keys for the authenticated user.
+  rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse);
+
+  // RevokeAPIKey revokes an API key for the authenticated user.
+  rpc RevokeAPIKey(RevokeAPIKeyRequest) returns (RevokeAPIKeyResponse);
+
+  // DeleteAPIKey deletes an API key for the authenticated user.
+  rpc DeleteAPIKey(DeleteAPIKeyRequest) returns (DeleteAPIKeyResponse);
+}
+
+// Request and Response messages
+message CreateAPIKeyRequest {
+  string name = 1;
+  string expires_at = 2; // optional expiration date in RFC3339 format
+}
+
+message CreateAPIKeyResponse {
+  APIKey api_key = 1;
+  string key = 2; // the actual API key string
+}
+
+message ListAPIKeysRequest {}
+
+message ListAPIKeysResponse {
+  repeated APIKey api_keys = 1;
+}
+
+message RevokeAPIKeyRequest {
+  string key_id = 1;
+}
+
+message RevokeAPIKeyResponse {}
+
+message DeleteAPIKeyRequest {
+  string key_id = 1;
+}
+
+message DeleteAPIKeyResponse {}
+
+// Common messages
+message APIKey {
+  string id = 1;
+  string user_id = 2;
+  string name = 3;
+  string created_at = 4;
+  string last_used_at = 5;
+  string expires_at = 6;
+  bool is_active = 7;
+}
