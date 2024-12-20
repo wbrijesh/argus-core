@@ -2,7 +2,6 @@ package apikeys
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"argus-core/internal/auth"
@@ -13,7 +12,7 @@ import (
 	"github.com/twitchtv/twirp"
 )
 
-// TwirpServer implements the generated Twirp APIKeysService interface
+// TwirpServer implements the APIKeysService for managing API keys
 type TwirpServer struct {
 	authService auth.Service
 	db          database.Service
@@ -24,64 +23,87 @@ func NewTwirpServer(authService auth.Service, db database.Service) pb.APIKeysSer
 	return &TwirpServer{authService: authService, db: db}
 }
 
-// CreateAPIKey implements the Twirp APIKeysService CreateAPIKey method
-func (s *TwirpServer) CreateAPIKey(ctx context.Context, req *pb.CreateAPIKeyRequest) (*pb.CreateAPIKeyResponse, error) {
-	userID, err := s.authorize(ctx)
-	if err != nil {
-		return nil, err
+// formatAPIKeyResponse converts a database API key to a protobuf API key
+func formatAPIKeyResponse(apiKey *database.APIKey) *pb.APIKey {
+	response := &pb.APIKey{
+		Id:        apiKey.ID.String(),
+		UserId:    apiKey.UserID.String(),
+		Name:      apiKey.Name,
+		CreatedAt: apiKey.CreatedAt.Format(time.RFC3339),
+		IsActive:  apiKey.IsActive,
 	}
 
+	if apiKey.LastUsedAt != nil {
+		response.LastUsedAt = apiKey.LastUsedAt.Format(time.RFC3339)
+	}
+
+	if apiKey.ExpiresAt != nil {
+		response.ExpiresAt = apiKey.ExpiresAt.Format(time.RFC3339)
+	}
+
+	return response
+}
+
+// CreateAPIKey implements the Twirp APIKeysService CreateAPIKey method
+func (s *TwirpServer) CreateAPIKey(ctx context.Context, req *pb.CreateAPIKeyRequest) (*pb.CreateAPIKeyResponse, error) {
+	if req.Token == "" {
+		return nil, twirp.NewError(twirp.Unauthenticated, "token is required")
+	}
+	if req.Name == "" {
+		return nil, twirp.NewError(twirp.InvalidArgument, "name is required")
+	}
+
+	// Validate token and get user
+	user, err := s.authService.ValidateToken(req.Token)
+	if err != nil {
+		return nil, twirp.NewError(twirp.Unauthenticated, "invalid token")
+	}
+
+	// Parse expiration date if provided
 	var expiresAt *time.Time
 	if req.ExpiresAt != "" {
 		t, err := time.Parse(time.RFC3339, req.ExpiresAt)
 		if err != nil {
-			return nil, twirp.NewError(twirp.InvalidArgument, "invalid expiration date format")
+			return nil, twirp.NewError(twirp.InvalidArgument, "expires_at must be in RFC3339 format")
+		}
+		if t.Before(time.Now()) {
+			return nil, twirp.NewError(twirp.InvalidArgument, "expiration date cannot be in the past")
 		}
 		expiresAt = &t
 	}
 
-	apiKey, keyString, err := s.authService.CreateAPIKey(userID, req.Name, expiresAt)
+	// Create API key
+	apiKey, keyString, err := s.authService.CreateAPIKey(user.ID, req.Name, expiresAt)
 	if err != nil {
 		return nil, twirp.InternalErrorWith(err)
 	}
 
 	return &pb.CreateAPIKeyResponse{
-		ApiKey: &pb.APIKey{
-			Id:         apiKey.ID.String(),
-			UserId:     apiKey.UserID.String(),
-			Name:       apiKey.Name,
-			CreatedAt:  apiKey.CreatedAt.Format(time.RFC3339),
-			LastUsedAt: apiKey.LastUsedAt.Format(time.RFC3339),
-			ExpiresAt:  apiKey.ExpiresAt.Format(time.RFC3339),
-			IsActive:   apiKey.IsActive,
-		},
-		Key: keyString,
+		ApiKey: formatAPIKeyResponse(apiKey),
+		Key:    keyString,
 	}, nil
 }
 
 // ListAPIKeys implements the Twirp APIKeysService ListAPIKeys method
 func (s *TwirpServer) ListAPIKeys(ctx context.Context, req *pb.ListAPIKeysRequest) (*pb.ListAPIKeysResponse, error) {
-	userID, err := s.authorize(ctx)
-	if err != nil {
-		return nil, err
+	if req.Token == "" {
+		return nil, twirp.NewError(twirp.Unauthenticated, "token is required")
 	}
 
-	apiKeys, err := s.authService.ListAPIKeys(userID)
+	// Validate token and get user
+	user, err := s.authService.ValidateToken(req.Token)
+	if err != nil {
+		return nil, twirp.NewError(twirp.Unauthenticated, "invalid token")
+	}
+
+	apiKeys, err := s.authService.ListAPIKeys(user.ID)
 	if err != nil {
 		return nil, twirp.InternalErrorWith(err)
 	}
 
 	var pbAPIKeys []*pb.APIKey
 	for _, apiKey := range apiKeys {
-		pbAPIKeys = append(pbAPIKeys, &pb.APIKey{
-			Id:         apiKey.ID.String(),
-			UserId:     apiKey.UserID.String(),
-			Name:       apiKey.Name,
-			CreatedAt:  apiKey.CreatedAt.Format(time.RFC3339),
-			LastUsedAt: apiKey.LastUsedAt.Format(time.RFC3339),
-			ExpiresAt:  apiKey.ExpiresAt.Format(time.RFC3339),
-			IsActive:   apiKey.IsActive,
-		})
+		pbAPIKeys = append(pbAPIKeys, formatAPIKeyResponse(&apiKey))
 	}
 
 	return &pb.ListAPIKeysResponse{ApiKeys: pbAPIKeys}, nil
@@ -89,18 +111,29 @@ func (s *TwirpServer) ListAPIKeys(ctx context.Context, req *pb.ListAPIKeysReques
 
 // RevokeAPIKey implements the Twirp APIKeysService RevokeAPIKey method
 func (s *TwirpServer) RevokeAPIKey(ctx context.Context, req *pb.RevokeAPIKeyRequest) (*pb.RevokeAPIKeyResponse, error) {
-	userID, err := s.authorize(ctx)
+	if req.Token == "" {
+		return nil, twirp.NewError(twirp.Unauthenticated, "token is required")
+	}
+	if req.KeyId == "" {
+		return nil, twirp.NewError(twirp.InvalidArgument, "key_id is required")
+	}
+
+	// Validate token and get user
+	user, err := s.authService.ValidateToken(req.Token)
 	if err != nil {
-		return nil, err
+		return nil, twirp.NewError(twirp.Unauthenticated, "invalid token")
 	}
 
 	keyID, err := gocql.ParseUUID(req.KeyId)
 	if err != nil {
-		return nil, twirp.NewError(twirp.InvalidArgument, "invalid key ID")
+		return nil, twirp.NewError(twirp.InvalidArgument, "invalid key ID format")
 	}
 
-	err = s.authService.RevokeAPIKey(userID, keyID)
+	err = s.authService.RevokeAPIKey(user.ID, keyID)
 	if err != nil {
+		if err == ErrAPIKeyInvalid {
+			return nil, twirp.NewError(twirp.NotFound, "API key not found")
+		}
 		return nil, twirp.InternalErrorWith(err)
 	}
 
@@ -109,45 +142,31 @@ func (s *TwirpServer) RevokeAPIKey(ctx context.Context, req *pb.RevokeAPIKeyRequ
 
 // DeleteAPIKey implements the Twirp APIKeysService DeleteAPIKey method
 func (s *TwirpServer) DeleteAPIKey(ctx context.Context, req *pb.DeleteAPIKeyRequest) (*pb.DeleteAPIKeyResponse, error) {
-	userID, err := s.authorize(ctx)
+	if req.Token == "" {
+		return nil, twirp.NewError(twirp.Unauthenticated, "token is required")
+	}
+	if req.KeyId == "" {
+		return nil, twirp.NewError(twirp.InvalidArgument, "key_id is required")
+	}
+
+	// Validate token and get user
+	user, err := s.authService.ValidateToken(req.Token)
 	if err != nil {
-		return nil, err
+		return nil, twirp.NewError(twirp.Unauthenticated, "invalid token")
 	}
 
 	keyID, err := gocql.ParseUUID(req.KeyId)
 	if err != nil {
-		return nil, twirp.NewError(twirp.InvalidArgument, "invalid key ID")
+		return nil, twirp.NewError(twirp.InvalidArgument, "invalid key ID format")
 	}
 
-	err = s.authService.DeleteAPIKey(userID, keyID)
+	err = s.authService.DeleteAPIKey(user.ID, keyID)
 	if err != nil {
+		if err == ErrAPIKeyInvalid {
+			return nil, twirp.NewError(twirp.NotFound, "API key not found")
+		}
 		return nil, twirp.InternalErrorWith(err)
 	}
 
 	return &pb.DeleteAPIKeyResponse{}, nil
-}
-
-// authorize checks the authorization token and returns the user ID
-func (s *TwirpServer) authorize(ctx context.Context) (gocql.UUID, error) {
-	headers, ok := twirp.HTTPRequestHeaders(ctx)
-	if !ok {
-		return gocql.UUID{}, twirp.NewError(twirp.Unauthenticated, "missing authorization token")
-	}
-
-	authHeader := headers.Get("Authorization")
-	if authHeader == "" {
-		return gocql.UUID{}, twirp.NewError(twirp.Unauthenticated, "missing authorization token")
-	}
-
-	token := strings.TrimPrefix(authHeader, "Bearer ")
-	if token == authHeader {
-		return gocql.UUID{}, twirp.NewError(twirp.Unauthenticated, "invalid authorization token format")
-	}
-
-	user, err := s.authService.ValidateToken(token)
-	if err != nil {
-		return gocql.UUID{}, twirp.NewError(twirp.Unauthenticated, "invalid token")
-	}
-
-	return user.ID, nil
 }

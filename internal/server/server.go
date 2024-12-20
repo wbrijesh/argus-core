@@ -57,10 +57,13 @@ func NewServer() *http.Server {
 	authHandler := authpb.NewAuthServiceServer(auth.NewTwirpServer(authService))
 	apiKeysHandler := apikeyspb.NewAPIKeysServiceServer(apikeys.NewTwirpServer(authService, db))
 
+	fmt.Println("auth prefix: " + authHandler.PathPrefix())
+	fmt.Println("apiKeys prefix: " + apiKeysHandler.PathPrefix())
+
 	// Combine handlers
 	mux := http.NewServeMux()
-	mux.Handle(authpb.AuthServicePathPrefix, authHandler)
-	mux.Handle(apikeyspb.APIKeysServicePathPrefix, apiKeysHandler)
+	mux.Handle(authHandler.PathPrefix(), authHandler)
+	mux.Handle(apiKeysHandler.PathPrefix(), apiKeysHandler)
 
 	// Wrap the mux with CORS middleware
 	handler := CORSMiddleware(mux)

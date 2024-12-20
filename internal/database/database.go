@@ -244,17 +244,17 @@ func (s *service) RevokeAPIKey(userID, keyID gocql.UUID) error {
 
 func (s *service) DeleteAPIKey(userID, keyID gocql.UUID) error {
 	// First verify the API key belongs to the user
-	var count int
+	var apiKey APIKey
 	if err := s.session.Query(`
-								SELECT COUNT(*) FROM api_keys
-								WHERE id = ? AND user_id = ? ALLOW FILTERING`,
-		keyID, userID,
-	).Scan(&count); err != nil {
-		return fmt.Errorf("error verifying API key ownership: %w", err)
+								SELECT id, user_id FROM api_keys
+								WHERE id = ? ALLOW FILTERING`,
+		keyID,
+	).Scan(&apiKey.ID, &apiKey.UserID); err != nil {
+		return fmt.Errorf("API key not found: %w", err)
 	}
 
-	if count == 0 {
-		return fmt.Errorf("API key not found or not owned by user")
+	if apiKey.UserID != userID {
+		return fmt.Errorf("API key not owned by user")
 	}
 
 	// Delete the API key
