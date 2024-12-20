@@ -2,7 +2,6 @@ package auth
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/gocql/gocql"
@@ -39,12 +38,6 @@ type Service interface {
 	Register(email, password string) (*database.User, error)
 	Login(email, password string) (string, *database.User, error) // Returns JWT token and user
 	ValidateToken(token string) (*database.User, error)
-
-	CreateAPIKey(userID gocql.UUID, name string, expiresAt *time.Time) (*database.APIKey, string, error) // Returns APIKey and the actual key
-	ValidateAPIKey(key string) (*database.APIKey, error)
-	ListAPIKeys(userID gocql.UUID) ([]database.APIKey, error)
-	RevokeAPIKey(userID, keyID gocql.UUID) error
-	DeleteAPIKey(userID, keyID gocql.UUID) error
 }
 
 type service struct {
@@ -146,61 +139,4 @@ func (s *service) ValidateToken(tokenString string) (*database.User, error) {
 	}
 
 	return user, nil
-}
-
-func (s *service) CreateAPIKey(userID gocql.UUID, name string, expiresAt *time.Time) (*database.APIKey, string, error) {
-	// Generate random API key
-	apiKeyStr, err := generateAPIKey()
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to generate API key: %w", err)
-	}
-
-	// Hash the API key
-	keyHash := hashAPIKey(apiKeyStr)
-
-	// Create API key in database
-	apiKey, err := s.db.CreateAPIKey(userID, name, keyHash, expiresAt)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to create API key: %w", err)
-	}
-
-	return apiKey, apiKeyStr, nil
-}
-
-func (s *service) ValidateAPIKey(key string) (*database.APIKey, error) {
-	// Validate key format
-	if !validateAPIKeyFormat(key) {
-		return nil, ErrAPIKeyNotFound
-	}
-
-	keyHash := hashAPIKey(key)
-
-	apiKey, err := s.db.GetAPIKeyByHash(keyHash)
-	if err != nil {
-		return nil, ErrAPIKeyNotFound
-	}
-
-	// Check if key is expired
-	if apiKey.ExpiresAt != nil && time.Now().After(*apiKey.ExpiresAt) {
-		return nil, ErrAPIKeyNotFound
-	}
-
-	// Check if key is active
-	if !apiKey.IsActive {
-		return nil, ErrAPIKeyNotFound
-	}
-
-	return apiKey, nil
-}
-
-func (s *service) ListAPIKeys(userID gocql.UUID) ([]database.APIKey, error) {
-	return s.db.ListAPIKeys(userID)
-}
-
-func (s *service) RevokeAPIKey(userID, keyID gocql.UUID) error {
-	return s.db.RevokeAPIKey(userID, keyID)
-}
-
-func (s *service) DeleteAPIKey(userID, keyID gocql.UUID) error {
-	return s.db.DeleteAPIKey(userID, keyID)
 }

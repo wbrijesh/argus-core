@@ -19,3 +19,13 @@ CREATE TABLE IF NOT EXISTS argus.api_keys (
     PRIMARY KEY (id, created_at)
 ) WITH CLUSTERING ORDER BY (created_at DESC);
 
+CREATE TABLE IF NOT EXISTS argus.applications (
+    id uuid,
+    user_id uuid,
+    name text,
+    description text,
+    key_hash text,
+    created_at timestamp,
+    updated_at timestamp,
+    PRIMARY KEY (id, created_at)
+) WITH CLUSTERING ORDER BY (created_at DESC);

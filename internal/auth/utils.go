@@ -13,9 +13,9 @@ const (
 	APIKeyBytes  = 32
 )
 
-// generateAPIKey generates a new API key with format: argus_<random-string> base64 encoded
+// GenerateAPIKey generates a new API key with format: argus_<random-string> base64 encoded
 // The random string is base64 encoded and URL safe
-func generateAPIKey() (string, error) {
+func GenerateAPIKey() (string, error) {
 	// Generate random bytes
 	randomBytes := make([]byte, APIKeyBytes)
 	_, err := rand.Read(randomBytes)
@@ -31,9 +31,9 @@ func generateAPIKey() (string, error) {
 	return fmt.Sprintf("%s_%s", APIKeyPrefix, randomString), nil
 }
 
-// hashAPIKey creates a SHA-256 hash of the API key
+// HashAPIKey creates a SHA-256 hash of the API key
 // This is what we'll store in the database
-func hashAPIKey(key string) string {
+func HashAPIKey(key string) string {
 	// Create SHA-256 hash
 	hasher := sha256.New()
 	hasher.Write([]byte(key))

@@ -18,15 +18,14 @@ type User struct {
 	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
-type APIKey struct {
-	ID         gocql.UUID `json:"id"`
-	UserID     gocql.UUID `json:"user_id"`
-	Name       string     `json:"name"`
-	KeyHash    string     `json:"-"`
-	CreatedAt  time.Time  `json:"created_at"`
-	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
-	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
-	IsActive   bool       `json:"is_active"`
+type Application struct {
+	ID          gocql.UUID `json:"id"`
+	UserID      gocql.UUID `json:"user_id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	KeyHash     string     `json:"-"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 type Service interface {
@@ -37,12 +36,12 @@ type Service interface {
 	GetUserByEmail(email string) (*User, error)
 	GetUserByID(id gocql.UUID) (*User, error)
 
-	CreateAPIKey(userID gocql.UUID, name, keyHash string, expiresAt *time.Time) (*APIKey, error)
-	GetAPIKeyByHash(keyHash string) (*APIKey, error)
-	ListAPIKeys(userID gocql.UUID) ([]APIKey, error)
-	UpdateAPIKeyLastUsed(keyID gocql.UUID) error
-	RevokeAPIKey(userID, keyID gocql.UUID) error
-	DeleteAPIKey(userID, keyID gocql.UUID) error
+	CreateApplication(userID gocql.UUID, name, description, keyHash string) (*Application, error)
+	GetApplication(id gocql.UUID) (*Application, error)
+	ListApplications(userID gocql.UUID) ([]Application, error)
+	UpdateApplication(id gocql.UUID, name, description string) (*Application, error)
+	DeleteApplication(id gocql.UUID) error
+	RegenerateApplicationKey(appID gocql.UUID, newKeyHash string) error
 }
 
 type service struct {
@@ -142,128 +141,103 @@ func (s *service) GetUserByID(id gocql.UUID) (*User, error) {
 	return &user, nil
 }
 
-// API Key-related query implementations
-func (s *service) CreateAPIKey(userID gocql.UUID, name, keyHash string, expiresAt *time.Time) (*APIKey, error) {
-	apiKey := &APIKey{
-		ID:        gocql.TimeUUID(),
-		UserID:    userID,
-		Name:      name,
-		KeyHash:   keyHash,
-		CreatedAt: time.Now(),
-		ExpiresAt: expiresAt,
-		IsActive:  true,
+func (s *service) CreateApplication(userID gocql.UUID, name, description, keyHash string) (*Application, error) {
+	app := &Application{
+		ID:          gocql.TimeUUID(),
+		UserID:      userID,
+		Name:        name,
+		Description: description,
+		KeyHash:     keyHash,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 
 	if err := s.session.Query(`
-								INSERT INTO api_keys (id, user_id, name, key_hash, created_at, expires_at, is_active)
+								INSERT INTO applications (id, user_id, name, description, key_hash, created_at, updated_at)
 								VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		apiKey.ID, apiKey.UserID, apiKey.Name, apiKey.KeyHash,
-		apiKey.CreatedAt, apiKey.ExpiresAt, apiKey.IsActive,
+		app.ID, app.UserID, app.Name, app.Description, app.KeyHash, app.CreatedAt, app.UpdatedAt,
 	).Exec(); err != nil {
-		return nil, fmt.Errorf("error creating API key: %w", err)
+		return nil, fmt.Errorf("error creating application: %w", err)
 	}
 
-	return apiKey, nil
+	return app, nil
 }
 
-func (s *service) GetAPIKeyByHash(keyHash string) (*APIKey, error) {
-	var apiKey APIKey
+func (s *service) GetApplication(id gocql.UUID) (*Application, error) {
+	var app Application
 	if err := s.session.Query(`
-								SELECT id, user_id, name, key_hash, created_at, last_used_at, expires_at, is_active
-								FROM api_keys WHERE key_hash = ? ALLOW FILTERING`,
-		keyHash,
+								SELECT id, user_id, name, description, key_hash, created_at, updated_at
+								FROM applications WHERE id = ?`,
+		id,
 	).Scan(
-		&apiKey.ID, &apiKey.UserID, &apiKey.Name, &apiKey.KeyHash,
-		&apiKey.CreatedAt, &apiKey.LastUsedAt, &apiKey.ExpiresAt, &apiKey.IsActive,
+		&app.ID, &app.UserID, &app.Name, &app.Description,
+		&app.KeyHash, &app.CreatedAt, &app.UpdatedAt,
 	); err != nil {
-		return nil, fmt.Errorf("API key not found: %w", err)
+		return nil, fmt.Errorf("application not found: %w", err)
 	}
-	return &apiKey, nil
+	return &app, nil
 }
 
-func (s *service) ListAPIKeys(userID gocql.UUID) ([]APIKey, error) {
+func (s *service) ListApplications(userID gocql.UUID) ([]Application, error) {
 	iter := s.session.Query(`
-								SELECT id, user_id, name, key_hash, created_at, last_used_at, expires_at, is_active
-								FROM api_keys WHERE user_id = ? ALLOW FILTERING`,
+								SELECT id, user_id, name, description, key_hash, created_at, updated_at
+								FROM applications WHERE user_id = ? ALLOW FILTERING`,
 		userID,
 	).Iter()
 
-	var apiKeys []APIKey
-	var apiKey APIKey
-
+	var apps []Application
+	var app Application
 	for iter.Scan(
-		&apiKey.ID, &apiKey.UserID, &apiKey.Name, &apiKey.KeyHash,
-		&apiKey.CreatedAt, &apiKey.LastUsedAt, &apiKey.ExpiresAt, &apiKey.IsActive,
+		&app.ID, &app.UserID, &app.Name, &app.Description,
+		&app.KeyHash, &app.CreatedAt, &app.UpdatedAt,
 	) {
-		apiKeys = append(apiKeys, apiKey)
+		apps = append(apps, app)
 	}
 
 	if err := iter.Close(); err != nil {
-		return nil, fmt.Errorf("error listing API keys: %w", err)
+		return nil, fmt.Errorf("error listing applications: %w", err)
 	}
 
-	return apiKeys, nil
+	return apps, nil
 }
 
-func (s *service) UpdateAPIKeyLastUsed(keyID gocql.UUID) error {
+func (s *service) UpdateApplication(id gocql.UUID, name, description string) (*Application, error) {
 	now := time.Now()
 	if err := s.session.Query(`
-								UPDATE api_keys SET last_used_at = ? WHERE id = ?`,
-		now, keyID,
+        UPDATE applications
+        SET name = ?,
+            description = ?,
+            updated_at = ?
+        WHERE id = ?`,
+		name, description, now, id,
 	).Exec(); err != nil {
-		return fmt.Errorf("error updating API key last used: %w", err)
+		return nil, fmt.Errorf("error updating application: %w", err)
 	}
-	return nil
+
+	return s.GetApplication(id)
 }
 
-func (s *service) RevokeAPIKey(userID, keyID gocql.UUID) error {
-	// First verify the API key belongs to the user
-	var count int
+func (s *service) DeleteApplication(id gocql.UUID) error {
 	if err := s.session.Query(`
-								SELECT COUNT(*) FROM api_keys
-								WHERE id = ? AND user_id = ? ALLOW FILTERING`,
-		keyID, userID,
-	).Scan(&count); err != nil {
-		return fmt.Errorf("error verifying API key ownership: %w", err)
-	}
-
-	if count == 0 {
-		return fmt.Errorf("API key not found or not owned by user")
-	}
-
-	// Update the is_active status
-	if err := s.session.Query(`
-								UPDATE api_keys SET is_active = ? WHERE id = ?`,
-		false, keyID,
+								DELETE FROM applications WHERE id = ?`,
+		id,
 	).Exec(); err != nil {
-		return fmt.Errorf("error revoking API key: %w", err)
+		return fmt.Errorf("error deleting application: %w", err)
 	}
 
 	return nil
 }
 
-func (s *service) DeleteAPIKey(userID, keyID gocql.UUID) error {
-	// First verify the API key belongs to the user
-	var apiKey APIKey
+func (s *service) RegenerateApplicationKey(appID gocql.UUID, newKeyHash string) error {
+	now := time.Now()
 	if err := s.session.Query(`
-								SELECT id, user_id FROM api_keys
-								WHERE id = ? ALLOW FILTERING`,
-		keyID,
-	).Scan(&apiKey.ID, &apiKey.UserID); err != nil {
-		return fmt.Errorf("API key not found: %w", err)
-	}
-
-	if apiKey.UserID != userID {
-		return fmt.Errorf("API key not owned by user")
-	}
-
-	// Delete the API key
-	if err := s.session.Query(`
-								DELETE FROM api_keys WHERE id = ?`,
-		keyID,
+        UPDATE applications
+        SET key_hash = ?,
+            updated_at = ?
+        WHERE id = ?`,
+		newKeyHash, now, appID,
 	).Exec(); err != nil {
-		return fmt.Errorf("error deleting API key: %w", err)
+		return fmt.Errorf("error regenerating application key: %w", err)
 	}
-
 	return nil
 }
