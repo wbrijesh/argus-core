@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argus-core
+  labels:
+    app: argus-core
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: argus-core
+  template:
+    metadata:
+      labels:
+        app: argus-core
+    spec:
+      containers:
+        - name: argus-core
+          image: brijeshwawdhane/argus-core:0.1.0-alpha.5
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: argus-secrets

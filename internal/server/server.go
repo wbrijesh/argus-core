@@ -9,11 +9,15 @@ import (
 
 	_ "github.com/joho/godotenv/autoload"
 
+	"argus-core/internal/database"
+
 	"argus-core/internal/applications"
 	"argus-core/internal/auth"
-	"argus-core/internal/database"
+	"argus-core/internal/logs"
+
 	applicationspb "argus-core/rpc/applications"
 	authpb "argus-core/rpc/auth"
+	logspb "argus-core/rpc/logs"
 )
 
 type Server struct {
@@ -56,11 +60,13 @@ func NewServer() *http.Server {
 	// Create Twirp Server handlers
 	authHandler := authpb.NewAuthServiceServer(auth.NewTwirpServer(authService))
 	applicationsHandler := applicationspb.NewApplicationsServiceServer(applications.NewTwirpServer(authService, db))
+	logsHandler := logspb.NewLogsServiceServer(logs.NewTwirpServer(db, authService))
 
 	// Combine handlers
 	mux := http.NewServeMux()
 	mux.Handle(authHandler.PathPrefix(), authHandler)
 	mux.Handle(applicationsHandler.PathPrefix(), applicationsHandler)
+	mux.Handle(logsHandler.PathPrefix(), logsHandler)
 
 	// Wrap the mux with CORS middleware
 	handler := CORSMiddleware(mux)

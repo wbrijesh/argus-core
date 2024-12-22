@@ -29,3 +29,13 @@ CREATE TABLE IF NOT EXISTS argus.applications (
     updated_at timestamp,
     PRIMARY KEY (id, created_at)
 ) WITH CLUSTERING ORDER BY (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS argus.logs (
+    application_id uuid,
+    timestamp timestamp,
+    log_id uuid,
+    user_id uuid,
+    log_level text,
+    message text,
+    PRIMARY KEY ((application_id), timestamp, log_id)
+) WITH CLUSTERING ORDER BY (timestamp DESC);
