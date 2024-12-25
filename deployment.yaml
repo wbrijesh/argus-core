@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: argus-core
-          image: brijeshwawdhane/argus-core:0.1.0-alpha.5
+          image: brijeshwawdhane/argus-core:0.1.0-alpha.7
           ports:
             - containerPort: 8080
           envFrom:
