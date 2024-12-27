@@ -10,7 +10,7 @@ import (
 )
 
 func (s *service) BatchInsertLogs(logs []Log) error {
-	batch := s.session.NewBatch(gocql.LoggedBatch)
+	batch := s.session.NewBatch(gocql.UnloggedBatch)
 
 	for _, log := range logs {
 		batch.Query(`
@@ -206,14 +206,14 @@ func (s *service) GenerateDummyLogs(applicationID gocql.UUID) (int, error) {
 
 		// Add to batch
 		batch.Query(`
-												INSERT INTO logs (
-																application_id,
-																timestamp,
-																log_id,
-																user_id,
-																log_level,
-																message
-												) VALUES (?, ?, ?, ?, ?, ?)`,
+			INSERT INTO logs (
+				application_id,
+				timestamp,
+				log_id,
+				user_id,
+				log_level,
+				message
+			) VALUES (?, ?, ?, ?, ?, ?)`,
 			applicationID,
 			timestamp,
 			gocql.TimeUUID(),

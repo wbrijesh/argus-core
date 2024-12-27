@@ -17,8 +17,8 @@ func (s *service) CreateUser(email, passwordHash string) (*User, error) {
 	}
 
 	if err := s.session.Query(`
-								INSERT INTO users (id, email, password_hash, created_at, updated_at)
-								VALUES (?, ?, ?, ?, ?)`,
+		INSERT INTO users (id, email, password_hash, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)`,
 		user.ID, user.Email, user.PasswordHash, user.CreatedAt, user.UpdatedAt,
 	).Exec(); err != nil {
 		return nil, fmt.Errorf("error creating user: %w", err)
@@ -30,8 +30,8 @@ func (s *service) CreateUser(email, passwordHash string) (*User, error) {
 func (s *service) GetUserByEmail(email string) (*User, error) {
 	var user User
 	if err := s.session.Query(`
-								SELECT id, email, password_hash, created_at, updated_at
-								FROM users WHERE email = ? ALLOW FILTERING`,
+		SELECT id, email, password_hash, created_at, updated_at
+		FROM users WHERE email = ? ALLOW FILTERING`,
 		email,
 	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.CreatedAt, &user.UpdatedAt); err != nil {
 		return nil, fmt.Errorf("user not found: %w", err)
@@ -42,8 +42,8 @@ func (s *service) GetUserByEmail(email string) (*User, error) {
 func (s *service) GetUserByID(id gocql.UUID) (*User, error) {
 	var user User
 	if err := s.session.Query(`
-								SELECT id, email, password_hash, created_at, updated_at
-								FROM users WHERE id = ?`,
+		SELECT id, email, password_hash, created_at, updated_at
+		FROM users WHERE id = ?`,
 		id,
 	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.CreatedAt, &user.UpdatedAt); err != nil {
 		return nil, fmt.Errorf("user not found: %w", err)
