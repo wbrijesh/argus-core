@@ -42,8 +42,8 @@ CREATE TABLE IF NOT EXISTS argus.logs (
 
 CREATE TABLE IF NOT EXISTS argus.log_frequencies (
     application_id uuid,
-    interval_start timestamp,   -- The start time of the interval
-    interval_end timestamp,     -- The end time of the interval
-    log_count int,              -- Count of logs in that time interval
+    interval_start timestamp,
+    interval_end timestamp,
+    log_count int,
     PRIMARY KEY ((application_id), interval_start)
 ) WITH CLUSTERING ORDER BY (interval_start DESC);

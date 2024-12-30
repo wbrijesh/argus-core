@@ -1,30 +1,20 @@
-build:
-	@go build -o main cmd/api/main.go
+docker-build:
+	docker build -t brijeshwawdhane/argus-core:0.1.1-alpha.1 .
 
-run:
-	@go run cmd/api/main.go
+docker-push:
+	docker push brijeshwawdhane/argus-core:0.1.1-alpha.1
 
-docker-run:
-	@if docker compose up --build 2>/dev/null; then \
-		: ; \
-	else \
-		echo "Falling back to Docker Compose V1"; \
-		docker-compose up --build; \
-	fi
+k-deployment-reapply:
+	kubectl delete -f k8s/deployment.yaml
+	kubectl apply -f k8s/deployment.yaml
 
+k-rbac-reapply:
+	kubectl delete -f k8s/rbac.yaml
+	kubectl apply -f k8s/rbac.yaml
 
-docker-down:
-	@if docker compose down 2>/dev/null; then \
-		: ; \
-	else \
-		echo "Falling back to Docker Compose V1"; \
-		docker-compose down; \
-	fi
-
-
-clean:
-	@echo "Cleaning..."
-	@rm -f main
+k-service-reapply:
+	kubectl delete -f k8s/service.yaml
+	kubectl apply -f k8s/service.yaml
 
 watch:
 	@if command -v air > /dev/null; then \
@@ -42,4 +32,4 @@ watch:
             fi; \
         fi
 
-.PHONY: build run clean watch docker-run docker-down
+.PHONY: docker-build docker-push k-deployment-reapply k-rbac-reapply k-service-reapply watch

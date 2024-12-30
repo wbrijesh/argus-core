@@ -16,8 +16,6 @@ func New() Service {
 	cassandraPassword := os.Getenv("CASSANDRA_PASSWORD")
 	cassandraKeyspace := os.Getenv("CASSANDRA_KEYSPACE")
 
-	certFileName := "sf-class2-root.crt"
-
 	cluster := gocql.NewCluster(cassandraHost)
 	cluster.Port = 9142
 	cluster.SslOpts = nil
@@ -26,7 +24,7 @@ func New() Service {
 		Password: cassandraPassword,
 	}
 	cluster.SslOpts = &gocql.SslOptions{
-		CaPath:                 certFileName,
+		CaPath:                 "cassandra_ca.crt",
 		EnableHostVerification: false,
 	}
 	cluster.Consistency = gocql.LocalQuorum
